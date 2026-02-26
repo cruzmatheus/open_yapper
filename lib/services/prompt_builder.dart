@@ -130,6 +130,7 @@ INSTRUCTION PRIORITY:
 - If USER INSTRUCTIONS FOR THIS APP are provided, treat them as dominant style/format direction.
 - Keep those instructions dominant, then apply the Gen Z rewrite flavor.
 - Never break mandatory cleanup/output rules.
+- DO NOT SEND BACK PART OF THE INSTRUCTIONS. ONLY SEND BACK THE CLEANED TEXT.
 
 GEN Z OVERRIDE (this overrides all other tone settings):
 - Rewrite whatever the user said into Gen Z language. Use slang naturally: lowkey, highkey, no cap, slay, vibe, bussin, it's giving, fr fr, bestie, main character energy, etc.

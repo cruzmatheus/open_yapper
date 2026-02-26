@@ -9,6 +9,7 @@ import 'package:record/record.dart';
 
 import 'gemini_service.dart';
 import 'native_bridge.dart';
+import 'ollama_service.dart';
 import 'phrase_expansion_service.dart';
 import 'prompt_builder.dart';
 import 'dictionary_service.dart';
@@ -26,11 +27,18 @@ class RecordingService extends ChangeNotifier {
     UserProfileService? userProfileService,
     Future<String?> Function()? loadApiKey,
     Future<String> Function()? loadModel,
+    Future<String> Function()? loadProvider,
+    Future<String> Function()? loadOllamaBaseUrl,
+    Future<String> Function()? loadOllamaModel,
   }) : _historyService = historyService,
        _dictionaryService = dictionaryService,
        _userProfileService = userProfileService,
        _loadApiKey = loadApiKey ?? (() async => null),
-       _loadModel = loadModel ?? (() async => defaultGeminiModel) {
+       _loadModel = loadModel ?? (() async => defaultGeminiModel),
+       _loadProvider = loadProvider ?? (() async => llmProviderGemini),
+       _loadOllamaBaseUrl =
+           loadOllamaBaseUrl ?? (() async => defaultOllamaBaseUrl),
+       _loadOllamaModel = loadOllamaModel ?? (() async => defaultOllamaModel) {
     _init();
   }
 
@@ -39,6 +47,9 @@ class RecordingService extends ChangeNotifier {
   final UserProfileService? _userProfileService;
   final Future<String?> Function() _loadApiKey;
   final Future<String> Function() _loadModel;
+  final Future<String> Function() _loadProvider;
+  final Future<String> Function() _loadOllamaBaseUrl;
+  final Future<String> Function() _loadOllamaModel;
 
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
@@ -58,6 +69,7 @@ class RecordingService extends ChangeNotifier {
   RecordingEntry? _latestEntry;
   double _recordingDuration = 0;
   double _currentAudioLevel = 0;
+  String _processingStatusText = 'Processing...';
 
   Timer? _durationTimer;
   StreamSubscription<Amplitude>? _amplitudeSub;
@@ -80,7 +92,7 @@ class RecordingService extends ChangeNotifier {
 
   String get statusText {
     if (_isRecording) return 'Recording...';
-    if (_isProcessing) return 'Processing with Gemini...';
+    if (_isProcessing) return _processingStatusText;
     if (_isPasteSuccess) return 'Pasted successfully!';
     if (_lastError != null) return 'Error — see details below';
     return 'Ready — Press ⌥ Space to record';
@@ -126,11 +138,14 @@ class RecordingService extends ChangeNotifier {
   Future<void> startRecording() async {
     if (!_hasPermission || _isRecording || _isProcessing) return;
 
-    final apiKey = await _loadApiKey();
-    if (apiKey == null || apiKey.trim().isEmpty) {
-      _lastError = 'Please set your Gemini API key in Settings.';
-      notifyListeners();
-      return;
+    final provider = await _loadProvider();
+    if (provider == llmProviderGemini) {
+      final apiKey = await _loadApiKey();
+      if (apiKey == null || apiKey.trim().isEmpty) {
+        _lastError = 'Please set your Gemini API key in Settings.';
+        notifyListeners();
+        return;
+      }
     }
 
     if (!_accessibilityGranted) {
@@ -229,23 +244,59 @@ class RecordingService extends ChangeNotifier {
       customPrompt: customPrompt,
       genZ: genZ,
     );
-    final model = await _loadModel();
-    final apiKey = await _loadApiKey();
 
-    if (path == null || apiKey == null || apiKey.trim().isEmpty) {
+    final provider = await _loadProvider();
+
+    if (provider == llmProviderOllama) {
+      _processingStatusText = 'Processing locally...';
+    } else {
+      _processingStatusText = 'Processing with Gemini...';
+    }
+    notifyListeners();
+
+    if (path == null) {
       _isProcessing = false;
-      _lastError = 'Recording failed or no API key.';
+      _lastError = 'Recording failed.';
       await _native.dismissRecordingOverlay();
       notifyListeners();
       return;
     }
 
+    if (provider == llmProviderGemini) {
+      final apiKey = await _loadApiKey();
+      if (apiKey == null || apiKey.trim().isEmpty) {
+        _isProcessing = false;
+        _lastError = 'Recording failed or no API key.';
+        await _native.dismissRecordingOverlay();
+        notifyListeners();
+        return;
+      }
+    }
+
     try {
-      final gemini = GeminiService(apiKey: apiKey, model: model);
-      final response = await gemini.processAudio(
-        audioFilePath: path,
-        systemPrompt: systemPrompt,
-      );
+      final String response;
+      final String usedModel;
+      if (provider == llmProviderOllama) {
+        final ollamaBaseUrl = await _loadOllamaBaseUrl();
+        final ollamaModel = await _loadOllamaModel();
+        usedModel = 'ollama/$ollamaModel';
+        final ollama = OllamaService(
+          baseUrl: ollamaBaseUrl,
+          model: ollamaModel,
+        );
+        response = await ollama.processAudio(
+          audioFilePath: path,
+          systemPrompt: systemPrompt,
+        );
+      } else {
+        usedModel = await _loadModel();
+        final apiKey = await _loadApiKey();
+        final gemini = GeminiService(apiKey: apiKey!, model: usedModel);
+        response = await gemini.processAudio(
+          audioFilePath: path,
+          systemPrompt: systemPrompt,
+        );
+      }
       final profile =
           await _userProfileService?.loadProfile() ?? UserProfile.empty;
       final dictionaryService = _dictionaryService;
@@ -288,7 +339,7 @@ class RecordingService extends ChangeNotifier {
         final entry = await _historyService.addTextEntry(
           response: expandedResponse,
           targetApp: targetApp,
-          model: model,
+          model: usedModel,
           durationSeconds: duration,
         );
         if (entry != null) {

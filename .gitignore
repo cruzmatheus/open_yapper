@@ -46,3 +46,6 @@ app.*.map.json
 
 # Local environment secrets
 open_yapper_site/.env.local
+
+# whisper.cpp (cloned locally by user, not tracked)
+backend/lib/whisper.cpp/

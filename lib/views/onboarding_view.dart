@@ -22,6 +22,8 @@ class OnboardingView extends StatefulWidget {
 class _OnboardingViewState extends State<OnboardingView> {
   Timer? _pollTimer;
   bool _apiKeySet = false;
+  bool _completed = false;
+  String _llmProvider = llmProviderGemini;
   final TextEditingController _apiKeyController = TextEditingController();
   bool _apiKeyObscured = true;
   bool _savingApiKey = false;
@@ -47,11 +49,18 @@ class _OnboardingViewState extends State<OnboardingView> {
     return isSet;
   }
 
+  Future<void> _reloadProvider() async {
+    final provider = await loadLlmProvider();
+    if (mounted) setState(() => _llmProvider = provider);
+  }
+
   Future<void> _initOnboarding() async {
     // Re-check permissions immediately when welcome screen would show
     await widget.recordingService.checkPermissions();
+    await _reloadProvider();
     final apiKeySet = await _checkApiKey();
-    if (widget.recordingService.allPermissionsGranted && apiKeySet) {
+    if (widget.recordingService.allPermissionsGranted &&
+        (_llmProvider == llmProviderOllama || apiKeySet)) {
       await setOnboardingCompleted(true);
       if (mounted) setState(() {});
       return;
@@ -66,16 +75,21 @@ class _OnboardingViewState extends State<OnboardingView> {
     if (mounted) setState(() {});
   }
 
-  bool _shouldHideOnboarding() =>
-      widget.recordingService.allPermissionsGranted && _apiKeySet;
+  bool _shouldHideOnboarding() {
+    if (_completed) return true;
+    if (!widget.recordingService.allPermissionsGranted) return false;
+    return _llmProvider == llmProviderOllama || _apiKeySet;
+  }
 
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (_completed) return;
       if (!widget.recordingService.allPermissionsGranted) {
         await widget.recordingService.checkPermissions();
       }
       await _checkApiKey();
+      await _reloadProvider();
       if (_shouldHideOnboarding()) {
         await setOnboardingCompleted(true);
       }
@@ -141,6 +155,7 @@ class _OnboardingViewState extends State<OnboardingView> {
         setState(() {
           _apiKeySet = true;
           _savingApiKey = false;
+          _completed = true;
         });
       }
     } catch (_) {
@@ -150,7 +165,7 @@ class _OnboardingViewState extends State<OnboardingView> {
 
   void _skipApiKey() async {
     await setOnboardingCompleted(true);
-    if (mounted) setState(() => _apiKeySet = true);
+    if (mounted) setState(() { _apiKeySet = true; _completed = true; });
   }
 
   Future<void> _restartApp() async {
@@ -283,14 +298,15 @@ class _ApiKeyOnboardingContent extends StatelessWidget {
     return Container(
       color: Colors.black54,
       child: Center(
-        child: Container(
+        child: Material(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          elevation: 8,
+          shadowColor: Colors.black26,
+          clipBehavior: Clip.antiAlias,
+          child: Container(
           constraints: const BoxConstraints(maxWidth: 500),
           padding: const EdgeInsets.all(40),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20)],
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -385,6 +401,7 @@ class _ApiKeyOnboardingContent extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -34,6 +34,9 @@ void main() async {
     userProfileService: userProfileService,
     loadApiKey: loadGeminiApiKey,
     loadModel: loadGeminiModel,
+    loadProvider: loadLlmProvider,
+    loadOllamaBaseUrl: loadOllamaBaseUrl,
+    loadOllamaModel: loadOllamaModel,
   );
 
   NativeBridge.instance.setHotkeyCallbacks(

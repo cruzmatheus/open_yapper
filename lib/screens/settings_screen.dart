@@ -180,10 +180,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     repo: 'open_yapper',
   );
   final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _ollamaBaseUrlController =
+      TextEditingController();
+  final TextEditingController _ollamaModelController = TextEditingController();
   bool _apiKeyObscured = true;
   bool _genZEnabled = false;
   bool _phraseExpansionEnabled = true;
   String _selectedModel = defaultGeminiModel;
+  String _llmProvider = llmProviderGemini;
   HotkeyConfig _hotkeyConfig = HotkeyConfig.defaultConfig;
   String? _capturingHotkey; // 'start' | 'stop' | 'hold'
   String _appVersion = '...';
@@ -199,6 +203,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _ollamaBaseUrlController.dispose();
+    _ollamaModelController.dispose();
     super.dispose();
   }
 
@@ -208,6 +214,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hotkeyConfig = await loadHotkeyConfig();
     final genZEnabled = await loadGenZEnabled();
     final phraseExpansionEnabled = await loadPhraseExpansionEnabled();
+    final llmProvider = await loadLlmProvider();
+    final ollamaBaseUrl = await loadOllamaBaseUrl();
+    final ollamaModel = await loadOllamaModel();
     if (mounted) {
       setState(() {
         _apiKeyController.text = key ?? '';
@@ -215,6 +224,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _hotkeyConfig = hotkeyConfig;
         _genZEnabled = genZEnabled;
         _phraseExpansionEnabled = phraseExpansionEnabled;
+        _llmProvider = llmProvider;
+        _ollamaBaseUrlController.text = ollamaBaseUrl;
+        _ollamaModelController.text = ollamaModel;
       });
     }
   }
@@ -253,6 +265,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _saveLlmProvider(String provider) async {
+    await saveLlmProvider(provider);
+    if (mounted) {
+      setState(() => _llmProvider = provider);
+    }
+  }
+
+  Future<void> _saveOllamaBaseUrl() async {
+    await saveOllamaBaseUrl(_ollamaBaseUrlController.text.trim());
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ollama URL saved')));
+    }
+  }
+
+  Future<void> _saveOllamaModel() async {
+    await saveOllamaModel(_ollamaModelController.text.trim());
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ollama model saved')));
     }
   }
 
@@ -478,6 +515,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Text('Settings', style: theme.textTheme.headlineSmall),
             ),
             _Section(
+              title: 'LLM Provider',
+              icon: Symbols.smart_toy,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose where your voice recordings are processed.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: llmProviderGemini,
+                        label: Text('Gemini (Cloud)'),
+                        icon: Icon(Symbols.cloud),
+                      ),
+                      ButtonSegment(
+                        value: llmProviderOllama,
+                        label: Text('Local (Ollama)'),
+                        icon: Icon(Symbols.computer),
+                      ),
+                    ],
+                    selected: {_llmProvider},
+                    onSelectionChanged: (selection) {
+                      if (selection.isNotEmpty) {
+                        _saveLlmProvider(selection.first);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Section(
               title: 'Output',
               icon: Symbols.auto_awesome,
               child: Row(
@@ -532,116 +606,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            _Section(
-              title: 'Gemini API Key',
-              icon: Symbols.key,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Required for voice-to-AI processing. Get a key at https://aistudio.google.com/apikey',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+            if (_llmProvider == llmProviderGemini) ...[
+              const SizedBox(height: 12),
+              _Section(
+                title: 'Gemini API Key',
+                icon: Symbols.key,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Required for voice-to-AI processing. Get a key at https://aistudio.google.com/apikey',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: PasteableTextField(
-                          controller: _apiKeyController,
-                          obscureText: _apiKeyObscured,
-                          decoration: InputDecoration(
-                            hintText: 'Enter your Gemini API key',
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _apiKeyObscured
-                                    ? Symbols.visibility
-                                    : Symbols.visibility_off,
-                                size: 20,
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PasteableTextField(
+                            controller: _apiKeyController,
+                            obscureText: _apiKeyObscured,
+                            decoration: InputDecoration(
+                              hintText: 'Enter your Gemini API key',
+                              border: const OutlineInputBorder(),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _apiKeyObscured
+                                      ? Symbols.visibility
+                                      : Symbols.visibility_off,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(
+                                    () => _apiKeyObscured = !_apiKeyObscured,
+                                  );
+                                },
                               ),
-                              onPressed: () {
-                                setState(
-                                  () => _apiKeyObscured = !_apiKeyObscured,
-                                );
-                              },
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _saveApiKey,
-                        child: const Text('Save'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Stored securely in macOS Keychain',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.4,
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _saveApiKey,
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Stored securely in macOS Keychain',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.4,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            _Section(
-              title: 'Model Selection',
-              icon: Symbols.smart_toy,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Choose which Gemini model to use for processing.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Flash latest is more accurate but more expensive.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Flash lite latest is cheaper with medium accuracy.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedModel,
-                    decoration: const InputDecoration(
-                      labelText: 'Gemini model',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem<String>(
-                        value: geminiFlashLiteLatestModel,
-                        child: Text('Flash lite latest (default)'),
+              const SizedBox(height: 12),
+              _Section(
+                title: 'Model Selection',
+                icon: Symbols.smart_toy,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Choose which Gemini model to use for processing.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                      DropdownMenuItem<String>(
-                        value: geminiFlashLatestModel,
-                        child: Text('Flash latest'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Flash latest is more accurate but more expensive.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null || value == _selectedModel) return;
-                      _saveModel(value);
-                    },
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Flash lite latest is cheaper with medium accuracy.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedModel,
+                      decoration: const InputDecoration(
+                        labelText: 'Gemini model',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem<String>(
+                          value: geminiFlashLiteLatestModel,
+                          child: Text('Flash lite latest (default)'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: geminiFlashLatestModel,
+                          child: Text('Flash latest'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null || value == _selectedModel) return;
+                        _saveModel(value);
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
+            if (_llmProvider == llmProviderOllama) ...[
+              const SizedBox(height: 12),
+              _Section(
+                title: 'Ollama Settings',
+                icon: Symbols.computer,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Configure the local Ruby backend and Ollama model. Run `ruby server.rb` in the backend/ directory first.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Backend URL', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PasteableTextField(
+                            controller: _ollamaBaseUrlController,
+                            decoration: const InputDecoration(
+                              hintText: 'http://localhost:11435',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _saveOllamaBaseUrl,
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Model name', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PasteableTextField(
+                            controller: _ollamaModelController,
+                            decoration: const InputDecoration(
+                              hintText: 'llama3.2',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _saveOllamaModel,
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _Section(
               title: 'Global Hotkeys',

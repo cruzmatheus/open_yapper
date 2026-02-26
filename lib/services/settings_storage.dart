@@ -20,6 +20,14 @@ const _hotkeyStopEnabledKey = 'hotkey_stop_enabled';
 const _hotkeyHoldEnabledKey = 'hotkey_hold_enabled';
 const _phraseExpansionEnabledKey = 'phrase_expansion_enabled';
 const _dismissedUpdateVersionKey = 'dismissed_update_version';
+const _llmProviderKey = 'llm_provider';
+const _ollamaBaseUrlKey = 'ollama_base_url';
+const _ollamaModelKey = 'ollama_model';
+
+const llmProviderGemini = 'gemini';
+const llmProviderOllama = 'ollama';
+const defaultOllamaBaseUrl = 'http://localhost:11435';
+const defaultOllamaModel = 'llama3.2';
 
 const geminiFlashLatestModel = 'gemini-flash-latest';
 const geminiFlashLiteLatestModel = 'gemini-flash-lite-latest';
@@ -325,5 +333,63 @@ Future<void> saveHotkeyConfig(HotkeyConfig config) async {
     await prefs.setBool(_hotkeyStartEnabledKey, config.startEnabled);
     await prefs.setBool(_hotkeyStopEnabledKey, config.stopEnabled);
     await prefs.setBool(_hotkeyHoldEnabledKey, config.holdEnabled);
+  } catch (_) {}
+}
+
+/// Loads the selected LLM provider ('gemini' or 'ollama'), defaulting to Gemini.
+Future<String> loadLlmProvider() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final provider = prefs.getString(_llmProviderKey);
+    if (provider == llmProviderGemini || provider == llmProviderOllama) {
+      return provider!;
+    }
+    return llmProviderGemini;
+  } catch (_) {
+    return llmProviderGemini;
+  }
+}
+
+/// Saves the selected LLM provider.
+Future<void> saveLlmProvider(String provider) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_llmProviderKey, provider);
+  } catch (_) {}
+}
+
+/// Loads the Ollama backend base URL, defaulting to localhost:11435.
+Future<String> loadOllamaBaseUrl() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_ollamaBaseUrlKey) ?? defaultOllamaBaseUrl;
+  } catch (_) {
+    return defaultOllamaBaseUrl;
+  }
+}
+
+/// Saves the Ollama backend base URL.
+Future<void> saveOllamaBaseUrl(String url) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_ollamaBaseUrlKey, url);
+  } catch (_) {}
+}
+
+/// Loads the Ollama model name, defaulting to llama3.2.
+Future<String> loadOllamaModel() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_ollamaModelKey) ?? defaultOllamaModel;
+  } catch (_) {
+    return defaultOllamaModel;
+  }
+}
+
+/// Saves the Ollama model name.
+Future<void> saveOllamaModel(String model) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_ollamaModelKey, model);
   } catch (_) {}
 }

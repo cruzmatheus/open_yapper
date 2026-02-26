@@ -21,7 +21,9 @@ Stop typing, start talking. Speak into your mic, and Open Yapper transcribes you
 - **Dictionary memory** — Manage Corrections, Frequent Terms, and Suggestions with enable/disable controls
 - **User info aliases** — Save personal fields (email, phone, links, etc.) so phrases like "my email" auto-expand
 - **Phrase expansion pipeline** — Expands user aliases + dictionary replacements before pasting
-- **Model selection** — Choose between Gemini Flash Lite Latest (default) and Gemini Flash Latest
+- **LLM provider choice** — Switch between Gemini (cloud) and Local (Ollama) in Settings with no restart needed
+- **Local/offline mode** — Run entirely on-device with Ollama + whisper.cpp via the included Ruby backend; no API key required
+- **Model selection** — Choose between Gemini Flash Lite Latest (default) and Gemini Flash Latest (Gemini mode), or any Ollama model (local mode)
 - **Per-app customization** — Configure tone + advanced custom prompt per app (Default + app-specific overrides)
 - **Global hotkeys** — Configure start, stop, and hold-to-record hotkeys (all independently editable)
 - **History & stats** — Browse past recordings, copy text, and see usage stats
@@ -31,7 +33,10 @@ Stop typing, start talking. Speak into your mic, and Open Yapper transcribes you
 ### Tech Stack
 
 - **Flutter** — Cross-platform (macOS, iOS, Android, Web, Windows)
-- **Google Gemini** — AI transcription and text refinement
+- **Google Gemini** — AI transcription and text refinement (cloud mode)
+- **Ollama** — Local LLM inference (offline mode)
+- **whisper.cpp** — On-device speech-to-text transcription (offline mode)
+- **Ruby / Sinatra** — Lightweight local backend bridging the app to Ollama + whisper.cpp
 - **Native macOS integration** — Hotkeys, accessibility, microphone permissions
 
 ---
@@ -125,7 +130,8 @@ Then replace the old app in Applications with the new `Open Yapper.app`.
 
 - [Flutter SDK](https://flutter.dev/docs/get-started/install) (3.10+)
 - [Dart](https://dart.dev/) 3.10+
-- A [Google Gemini API key](https://aistudio.google.com/apikey) (free tier available)
+- **Gemini mode:** A [Google Gemini API key](https://aistudio.google.com/apikey) (free tier available)
+- **Local mode:** [Ollama](https://ollama.com), Ruby 3.x, and whisper.cpp (see [Local Mode Setup](#local-mode-setup-ollama--whispercpp) below)
 
 ### 1. Clone the repo
 
@@ -233,15 +239,77 @@ Open Yapper can treat spoken formatting requests as instructions and shape outpu
   - `gemini-flash-latest` (higher quality, higher cost)
 - The selected model is used for all new recordings until changed
 
+### Local Mode Setup (Ollama + whisper.cpp)
+
+Use this to process voice entirely on your machine — no API key, no data sent to the cloud.
+
+#### 1. Install Ollama
+
+Download and install [Ollama](https://ollama.com), then pull a model:
+
+```bash
+ollama pull llama3.2
+```
+
+#### 2. Build whisper.cpp
+
+The local backend uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp) for on-device transcription.
+
+```bash
+# Clone whisper.cpp into the backend lib directory
+git clone https://github.com/ggml-org/whisper.cpp backend/lib/whisper.cpp
+cd backend/lib/whisper.cpp
+
+# Download the English medium model
+sh ./models/download-ggml-model.sh medium.en
+
+# Build
+cmake -B build
+cmake --build build -j --config Release
+```
+
+The backend expects the binary at `backend/lib/whisper.cpp/build/bin/whisper-cli` and the model at `backend/lib/whisper.cpp/models/ggml-medium.en.bin`.
+
+#### 3. Start the local backend
+
+```bash
+cd backend
+bundle install
+ruby server.rb
+```
+
+The server starts on `http://127.0.0.1:11435`. Verify it:
+
+```bash
+curl http://localhost:11435/health
+# {"status":"ok"}
+```
+
+You can optionally point to a remote Ollama instance:
+
+```bash
+OLLAMA_BASE=http://my-server:11434 ruby server.rb
+```
+
+#### 4. Switch the app to Local mode
+
+Open **Settings → LLM Provider** and select **Local (Ollama)**. Set the backend URL (`http://localhost:11435` by default) and the model name (`llama3.2` by default). No API key is required.
+
 ### Settings (Current)
 
+- **LLM Provider**
+  - Switch between **Gemini (Cloud)** and **Local (Ollama)**
+  - No restart required; takes effect on the next recording
 - **Output**
   - Gen Z mode toggle
 - **Text Expansion**
   - Phrase expansion toggle
-- **Gemini**
+- **Gemini** *(shown when Gemini is selected)*
   - API key save/view (stored in macOS Keychain)
   - Model selector
+- **Local (Ollama)** *(shown when Ollama is selected)*
+  - Backend URL (default: `http://localhost:11435`)
+  - Model name (default: `llama3.2`)
 - **Global Hotkeys**
   - Enable/disable and remap Start, Stop, and Hold hotkeys
 - **Permissions**
@@ -258,9 +326,12 @@ open_yapper/
 ├── lib/
 │   ├── main.dart              # App entry, navigation, hotkey wiring
 │   ├── screens/               # History, Dictionary, User Info, Stats, Customization, Settings
-│   ├── services/              # Recording, Gemini, dictionary, profile, phrase expansion, settings
+│   ├── services/              # Recording, Gemini, Ollama, dictionary, profile, phrase expansion, settings
 │   ├── views/                 # Onboarding flow
 │   └── widgets/               # Reusable UI components
+├── backend/                   # Ruby/Sinatra local backend (Ollama + whisper.cpp bridge)
+│   ├── server.rb              # API server (port 11435)
+│   └── Gemfile                # Ruby dependencies
 ├── macos/                     # macOS native code (hotkeys, permissions)
 ├── android/                   # Android config
 ├── ios/                       # iOS config
@@ -273,12 +344,13 @@ open_yapper/
 
 ## Configuration
 
+- **LLM provider** — Switch between Gemini (cloud) and Local (Ollama) in Settings > LLM Provider
 - **Hotkeys** — Enable/disable + remap start, stop, and hold shortcuts in Settings
 - **Tone** — Choose casual, normal, informal, or formal per app in Customization
 - **Advanced app prompts** — Add per-app writing instructions in Customization (Advanced mode)
 - **Gen Z mode** — Toggle in Settings > Output
 - **Phrase expansion** — Toggle in Settings > Text Expansion
-- **Model** — Select Gemini model in Settings > Model Selection
+- **Model** — Select Gemini model in Settings > Model Selection (Gemini mode), or set Ollama model name (local mode)
 - **Dictionary & aliases** — Configure replacements in Dictionary and User Info
 
 ---
